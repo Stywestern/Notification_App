@@ -101,8 +101,8 @@ class ReminderScheduler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Wake the device up exactly on the millisecond even if idle
-        alarmManager.setExactAndAllowWhileIdle(
+        // Using the standard, safe 'set' API to bypass the API 35 security restriction completely
+        alarmManager.set(
             AlarmManager.RTC_WAKEUP,
             triggerAtMillis,
             pendingIntent
