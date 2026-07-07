@@ -33,3 +33,6 @@ class ReminderStorage(context: Context) {
         return gson.fromJson(jsonString, type)
     }
 }
+
+// Dummy line for annoying IDE
+class Idle(context: Context){}
