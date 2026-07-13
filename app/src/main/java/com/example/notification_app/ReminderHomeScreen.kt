@@ -37,7 +37,7 @@ fun ReminderHomeScreen() {
     var taskName by remember { mutableStateOf("") }
 
     // Selection Labels derived dynamically from PickerUtils calculations
-    var selectedTimeText by remember { mutableStateOf("Tap to select trigger time") }
+    var selectedTimeText by remember { mutableStateOf("00:00:00") }
     var selectedDateTimeText by remember { mutableStateOf("Tap to select target date/time") }
 
     // Concrete temporary values to pass down to our data blueprint
@@ -82,16 +82,17 @@ fun ReminderHomeScreen() {
 
         // 3. DYNAMIC NATIVE INTERFACES
         if (selectedType == ReminderType.DAILY_PERSISTENT) {
-            Text("Execution Point:", modifier = Modifier.padding(bottom = 4.dp))
+            Text("Set Repeat Interval Duration:", modifier = Modifier.padding(bottom = 4.dp))
             OutlinedButton(
                 onClick = {
-                    PickerUtils.showTimePicker(context) { formattedString, _, _ ->
-                        selectedTimeText = "Fires daily at: $formattedString"
+                    PickerUtils.showSlidingDurationPicker(context, "Select Loop Interval") { hours, minutes, seconds ->
+                        // Automatically handles auto-fill format rule seamlessly
+                        selectedTimeText = String.format(java.util.Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
                     }
                 },
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
             ) {
-                Text(selectedTimeText)
+                Text("Interval: $selectedTimeText")
             }
         } else {
             Text("Target Deadline:", modifier = Modifier.padding(bottom = 4.dp))
@@ -131,7 +132,7 @@ fun ReminderHomeScreen() {
                     // Reset form fields cleanly
                     Toast.makeText(context, "Blueprint Saved and Tracked!", Toast.LENGTH_SHORT).show()
                     taskName = ""
-                    selectedTimeText = "Tap to select trigger time"
+                    selectedTimeText = "00:00:00"
                     selectedDateTimeText = "Tap to select target date/time"
                 } else {
                     Toast.makeText(context, "Please enter a title", Toast.LENGTH_SHORT).show()
@@ -154,12 +155,36 @@ fun ReminderHomeScreen() {
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9))
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(text = reminder.title)
-                            Text(
-                                text = "Strategy: ${reminder.type.name}",
-                                color = Color.Gray
-                            )
+                        // Use a horizontal Row container to align text and the action button split side-by-side
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(12.dp),
+                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
+                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(text = reminder.title)
+                                Text(
+                                    text = "Strategy: ${reminder.type.name}",
+                                    color = Color.Gray,
+                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                                )
+                            }
+
+                            // DELETE ACTION INTERFACE
+                            Button(
+                                onClick = {
+                                    // 1. Tell the background orchestrator to cancel the alarm trigger
+                                    scheduler.cancel(reminder.id)
+
+                                    // 2. Filter out this object index target from our screen memory list state
+                                    activeReminders = activeReminders.filter { it.id != reminder.id }
+
+                                    android.widget.Toast.makeText(context, "Reminder removed", android.widget.Toast.LENGTH_SHORT).show()
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBB2222))
+                            ) {
+                                Text("Delete", color = Color.White)
+                            }
                         }
                     }
                 }

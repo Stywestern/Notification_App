@@ -5,7 +5,6 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import java.util.Calendar
 
 /**
  * The core Background Orchestrator module.
@@ -20,33 +19,41 @@ class ReminderScheduler(private val context: Context) {
      */
     fun schedule(reminder: ReminderModel) {
         when (reminder.type) {
-            ReminderType.DAILY_PERSISTENT -> scheduleDaily(reminder)
+            ReminderType.DAILY_PERSISTENT -> scheduleIntervalLoop(reminder)
             ReminderType.EVENT_TIERED -> scheduleEventWithTiers(reminder)
         }
     }
 
     /**
-     * Strategy for scheduling continuous, repeating tasks.
+     * Strategy for scheduling continuous, relative-interval tasks.
      */
-    private fun scheduleDaily(reminder: ReminderModel) {
-        val calendar = Calendar.getInstance().apply {
-            // Defaulting to 9 AM today if specific moments aren't detailed yet
-            set(Calendar.HOUR_OF_DAY, 9)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
+    private fun scheduleIntervalLoop(reminder: ReminderModel) {
+        // 1. Extract the text string from our wheel selection (e.g., "00:03:00")
+        val intervalString = reminder.specificMoments?.firstOrNull() ?: "00:00:10"
+
+        // 2. Parse the string tokens into raw milliseconds
+        val parts = intervalString.split(":")
+        val hours = parts.getOrNull(0)?.toLongOrNull() ?: 0L
+        val minutes = parts.getOrNull(1)?.toLongOrNull() ?: 0L
+        val seconds = parts.getOrNull(2)?.toLongOrNull() ?: 0L
+
+        var totalIntervalMillis = (hours * 3600 + minutes * 60 + seconds) * 1000L
+
+        // SAFETY FLOOR CRITICAL CHECK FOR TESTING:
+        // If testing under 10 seconds, enforce at least 10 seconds so the OS doesn't kill it instantly
+        if (totalIntervalMillis < 10000L) {
+            totalIntervalMillis = 10000L
         }
 
-        // If 9 AM has already passed today, roll it over to tomorrow
-        if (calendar.timeInMillis < System.currentTimeMillis()) {
-            calendar.add(Calendar.DAY_OF_YEAR, 1)
-        }
+        val triggerTime = System.currentTimeMillis() + totalIntervalMillis
 
         val intent = Intent(context, AlarmReceiver::class.java).apply {
             putExtra("REMINDER_ID", reminder.id)
             putExtra("REMINDER_TITLE", reminder.title)
+            putExtra("REMINDER_TAG", "INTERVAL_LOOP")
+            putExtra("INTERVAL_MILLIS", totalIntervalMillis) // Pass the loop gap forward
         }
 
-        // Generate a unique system passport based on the reminder's hash code
         val pendingIntent = PendingIntent.getBroadcast(
             context,
             reminder.id.hashCode(),
@@ -54,11 +61,10 @@ class ReminderScheduler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Schedule it to repeat every 24 hours indefinitely
-        alarmManager.setInexactRepeating(
+        // 3. Dispatch using the background-safe Doze-bypass slot (no security crash)
+        alarmManager.setAndAllowWhileIdle(
             AlarmManager.RTC_WAKEUP,
-            calendar.timeInMillis,
-            AlarmManager.INTERVAL_DAY,
+            triggerTime,
             pendingIntent
         )
     }
@@ -101,11 +107,30 @@ class ReminderScheduler(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        // Using the standard, safe 'set' API to bypass the API 35 security restriction completely
         alarmManager.set(
             AlarmManager.RTC_WAKEUP,
             triggerAtMillis,
             pendingIntent
         )
+    }
+
+    /**
+     * Completely tears down a scheduled system alarm event.
+     * Bypasses ghost triggers if the user deletes a dashboard element.
+     */
+    fun cancel(reminderId: String) {
+        val intent = Intent(context, AlarmReceiver::class.java)
+
+        // Reconstruct the exact structural signature flag identifier of the target alarm intent
+        val pendingIntent = PendingIntent.getBroadcast(
+            context,
+            reminderId.hashCode(),
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+
+        // Revoke the authorization from the Android system alarm registry
+        alarmManager.cancel(pendingIntent)
+        pendingIntent.cancel()
     }
 }

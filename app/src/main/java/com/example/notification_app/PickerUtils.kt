@@ -1,39 +1,80 @@
 package com.example.notification_app
 
+import android.app.AlertDialog
 import android.app.DatePickerDialog
-import android.app.TimePickerDialog
 import android.content.Context
+import android.view.Gravity
+import android.widget.LinearLayout
+import android.widget.NumberPicker
+import android.widget.TextView
 import java.util.Calendar
 import java.util.Locale
 
 /**
- * A utility module handling native OS picker overlays.
+ * A utility module handling custom sliding picker dialog layouts.
  */
 object PickerUtils {
 
     /**
-     * Shows a native system time picker and formats the result as HH:mm:ss.
+     * Spawns a custom native pop-up alert containing three horizontal sliding selection wheels.
      */
-    fun showTimePicker(context: Context, onTimeSelected: (String, Int, Int) -> Unit) {
-        val calendar = Calendar.getInstance()
-        val currentHour = calendar.get(Calendar.HOUR_OF_DAY)
-        val currentMinute = calendar.get(Calendar.MINUTE)
+    fun showSlidingDurationPicker(
+        context: Context,
+        title: String,
+        onDurationSelected: (hours: Int, minutes: Int, seconds: Int) -> Unit
+    ) {
+        // 1. Create a container layout to hold the wheels horizontally
+        val linearLayout = LinearLayout(context).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(16, 32, 16, 32)
+        }
 
-        TimePickerDialog(
-            context,
-            { _, hourOfDay, minute ->
-                // Format directly into type-safe HH:mm:00 string layout
-                val formattedTime = String.format(Locale.getDefault(), "%02d:%02d:00", hourOfDay, minute)
-                onTimeSelected(formattedTime, hourOfDay, minute)
-            },
-            currentHour,
-            currentMinute,
-            true // True forces 24-hour mode layout
-        ).show()
+        // Helper parameters to initialize a clean wheel design instance
+        fun createWheel(max: Int, labelText: String): NumberPicker {
+            val container = LinearLayout(context).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f)
+            }
+
+            val label = TextView(context).apply {
+                text = labelText
+                gravity = Gravity.CENTER
+            }
+
+            val picker = NumberPicker(context).apply {
+                minValue = 0
+                maxValue = max
+            }
+
+            container.addView(label)
+            container.addView(picker)
+            linearLayout.addView(container)
+            return picker
+        }
+
+        // 2. Instantiate our sliding duration barrel components
+        val hourPicker = createWheel(23, "Hours")
+        val minutePicker = createWheel(59, "Minutes")
+        val secondPicker = createWheel(59, "Seconds")
+
+        // 3. Mount the layout elements onto a standard popup alert frame
+        AlertDialog.Builder(context)
+            .setTitle(title)
+            .setView(linearLayout)
+            .setPositiveButton("Confirm") { dialog, _ ->
+                onDurationSelected(hourPicker.value, minutePicker.value, secondPicker.value)
+                dialog.dismiss()
+            }
+            .setNegativeButton("Cancel") { dialog, _ ->
+                dialog.dismiss()
+            }
+            .show()
     }
 
     /**
-     * Shows a native date picker followed immediately by a time picker to capture a full timestamp.
+     * Shows a native date picker followed immediately by our modern sliding barrel duration picker.
      */
     fun showDateTimePicker(context: Context, onDateTimeSelected: (Long, String) -> Unit) {
         val calendar = Calendar.getInstance()
@@ -41,23 +82,22 @@ object PickerUtils {
         DatePickerDialog(
             context,
             { _, year, month, dayOfMonth ->
-                // Store the date parts into our calendar engine
                 calendar.set(Calendar.YEAR, year)
                 calendar.set(Calendar.MONTH, month)
                 calendar.set(Calendar.DAY_OF_MONTH, dayOfMonth)
 
-                // Date selected! Now launch the time picker sequentially
-                showTimePicker(context) { _, hour, minute ->
+                // Date is set! Now chain-launch our custom sliding duration barrel dialog
+                showSlidingDurationPicker(context, "Select Exact Event Time") { hour, minute, second ->
                     calendar.set(Calendar.HOUR_OF_DAY, hour)
                     calendar.set(Calendar.MINUTE, minute)
-                    calendar.set(Calendar.SECOND, 0)
+                    calendar.set(Calendar.SECOND, second)
                     calendar.set(Calendar.MILLISECOND, 0)
 
                     val timestamp = calendar.timeInMillis
                     val readableText = String.format(
                         Locale.getDefault(),
-                        "%02d/%02d/%d %02d:%02d:00",
-                        dayOfMonth, month + 1, year, hour, minute
+                        "%02d/%02d/%d %02d:%02d:%02d",
+                        dayOfMonth, month + 1, year, hour, minute, second
                     )
 
                     onDateTimeSelected(timestamp, readableText)
