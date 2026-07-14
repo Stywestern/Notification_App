@@ -55,4 +55,5 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation("com.google.code.gson:gson:2.11.0")
+    implementation("androidx.compose.material:material-icons-extended")
 }

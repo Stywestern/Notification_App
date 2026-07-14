@@ -1,17 +1,22 @@
 package com.example.notification_app
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -21,10 +26,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import java.util.UUID
 
 @Composable
@@ -43,7 +52,7 @@ fun ReminderHomeScreen() {
     // Concrete temporary values to pass down to our data blueprint
     var targetTimestamp by remember { mutableLongStateOf(0L) }
 
-    // Active Tracker List State (Our front-end dashboard monitor memory)
+    // Active Tracker List State
     var activeReminders by remember { mutableStateOf(emptyList<ReminderModel>()) }
 
     Column(modifier = Modifier.padding(16.dp)) {
@@ -86,8 +95,7 @@ fun ReminderHomeScreen() {
             OutlinedButton(
                 onClick = {
                     PickerUtils.showSlidingDurationPicker(context, "Select Loop Interval") { hours, minutes, seconds ->
-                        // Automatically handles auto-fill format rule seamlessly
-                        selectedTimeText = String.format(java.util.Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
+                        selectedTimeText = String.format(Locale.getDefault(), "%02d:%02d:%02d", hours, minutes, seconds)
                     }
                 },
                 modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
@@ -117,22 +125,17 @@ fun ReminderHomeScreen() {
                         id = UUID.randomUUID().toString(),
                         title = taskName,
                         type = selectedType,
-                        // Passing the relevant fields depending on choice selection
                         specificMoments = if (selectedType == ReminderType.DAILY_PERSISTENT) listOf(selectedTimeText) else null,
                         targetTimestamp = if (selectedType == ReminderType.EVENT_TIERED) targetTimestamp else null,
                         warningIntervalHours = if (selectedType == ReminderType.EVENT_TIERED) listOf(24, 1) else null
                     )
 
-                    // Issue commands to background engine
                     scheduler.schedule(newReminder)
-
-                    // Append item into dashboard interface list state dynamically
                     activeReminders = activeReminders + newReminder
 
-                    // Reset form fields cleanly
                     Toast.makeText(context, "Blueprint Saved and Tracked!", Toast.LENGTH_SHORT).show()
                     taskName = ""
-                    selectedTimeText = "00:00:00"
+                    selectedTimeText = "00:00:00" // Properly zeroing out the state here
                     selectedDateTimeText = "Tap to select target date/time"
                 } else {
                     Toast.makeText(context, "Please enter a title", Toast.LENGTH_SHORT).show()
@@ -143,47 +146,61 @@ fun ReminderHomeScreen() {
             Text("Save Blueprint")
         }
 
-        Text(text = "Active Monitors Dashboard", modifier = Modifier.padding(bottom = 8.dp))
+        // Contextual Dashboard Title
+        val dashboardTitle = if (selectedType == ReminderType.DAILY_PERSISTENT) "Active Daily Tasks" else "Active Special Events"
+        Text(text = dashboardTitle, modifier = Modifier.padding(bottom = 8.dp))
 
-        // 5. REACTIVE LIST RENDERER
+        // 5. REACTIVE AND FILTERED LIST RENDERER
         Column(modifier = Modifier.fillMaxWidth()) {
-            if (activeReminders.isEmpty()) {
-                Text("No reminders scheduled yet.", color = Color.Gray, modifier = Modifier.padding(8.dp))
+
+            // Filter the memory list to only show items matching the current top tab
+            val displayedReminders = activeReminders.filter { it.type == selectedType }
+
+            if (displayedReminders.isEmpty()) {
+                Text("No reminders in this category.", color = Color.Gray, modifier = Modifier.padding(8.dp))
             } else {
-                activeReminders.forEach { reminder ->
+                displayedReminders.forEach { reminder ->
                     Card(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFFF9F9F9))
                     ) {
-                        // Use a horizontal Row container to align text and the action button split side-by-side
                         Row(
                             modifier = Modifier.fillMaxWidth().padding(12.dp),
-                            horizontalArrangement = androidx.compose.foundation.layout.Arrangement.SpaceBetween,
-                            verticalAlignment = androidx.compose.ui.Alignment.CenterVertically
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(text = reminder.title)
+
+                                // Dynamic Subtitle Logic
+                                val subtitleText = if (reminder.type == ReminderType.DAILY_PERSISTENT) {
+                                    "Looping every: ${reminder.specificMoments?.firstOrNull() ?: "Unknown"}"
+                                } else {
+                                    val sdf = SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+                                    val dateStr = reminder.targetTimestamp?.let { sdf.format(Date(it)) } ?: "Unknown Date"
+                                    "Target: $dateStr"
+                                }
+
                                 Text(
-                                    text = "Strategy: ${reminder.type.name}",
+                                    text = subtitleText,
                                     color = Color.Gray,
-                                    style = androidx.compose.material3.MaterialTheme.typography.bodySmall
+                                    style = MaterialTheme.typography.bodySmall
                                 )
                             }
 
-                            // DELETE ACTION INTERFACE
-                            Button(
+                            // CLEAN TRASH CAN ICON
+                            IconButton(
                                 onClick = {
-                                    // 1. Tell the background orchestrator to cancel the alarm trigger
                                     scheduler.cancel(reminder.id)
-
-                                    // 2. Filter out this object index target from our screen memory list state
                                     activeReminders = activeReminders.filter { it.id != reminder.id }
-
-                                    android.widget.Toast.makeText(context, "Reminder removed", android.widget.Toast.LENGTH_SHORT).show()
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFBB2222))
+                                    Toast.makeText(context, "Reminder removed", Toast.LENGTH_SHORT).show()
+                                }
                             ) {
-                                Text("Delete", color = Color.White)
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = "Delete Reminder",
+                                    tint = Color(0xFFBB2222) // Keeps the destructive action visually distinct
+                                )
                             }
                         }
                     }
