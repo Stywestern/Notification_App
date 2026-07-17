@@ -40,6 +40,7 @@ import java.util.UUID
 fun ReminderHomeScreen() {
     val context = LocalContext.current
     val scheduler = remember { ReminderScheduler(context) }
+    val storage = remember { ReminderStorage(context) }
 
     // Core Form States
     var selectedType by remember { mutableStateOf(ReminderType.DAILY_PERSISTENT) }
@@ -53,10 +54,10 @@ fun ReminderHomeScreen() {
     var targetTimestamp by remember { mutableLongStateOf(0L) }
 
     // Active Tracker List State
-    var activeReminders by remember { mutableStateOf(emptyList<ReminderModel>()) }
+    var activeReminders by remember { mutableStateOf(storage.getReminders()) }
 
     Column(modifier = Modifier.padding(16.dp)) {
-        Text(text = "Custom Reminder Planner", modifier = Modifier.padding(bottom = 12.dp))
+        Text(text = "", modifier = Modifier.padding(bottom = 12.dp))
 
         // 1. STRATEGY SELECTOR TABS
         Row(modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)) {
@@ -132,8 +133,9 @@ fun ReminderHomeScreen() {
 
                     scheduler.schedule(newReminder)
                     activeReminders = activeReminders + newReminder
+                    storage.saveReminders(activeReminders)
 
-                    Toast.makeText(context, "Blueprint Saved and Tracked!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, "Reminder Saved", Toast.LENGTH_SHORT).show()
                     taskName = ""
                     selectedTimeText = "00:00:00" // Properly zeroing out the state here
                     selectedDateTimeText = "Tap to select target date/time"
@@ -143,7 +145,7 @@ fun ReminderHomeScreen() {
             },
             modifier = Modifier.fillMaxWidth().padding(bottom = 24.dp)
         ) {
-            Text("Save Blueprint")
+            Text("Save Reminder")
         }
 
         // Contextual Dashboard Title
@@ -193,6 +195,8 @@ fun ReminderHomeScreen() {
                                 onClick = {
                                     scheduler.cancel(reminder.id)
                                     activeReminders = activeReminders.filter { it.id != reminder.id }
+                                    storage.saveReminders(activeReminders)
+
                                     Toast.makeText(context, "Reminder removed", Toast.LENGTH_SHORT).show()
                                 }
                             ) {

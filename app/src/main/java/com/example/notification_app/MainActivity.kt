@@ -44,5 +44,3 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
-
-fun Idle() {}
